@@ -1,12 +1,11 @@
-# 🛰️ Multi-Protocol Traceroute Tool
+# Multi-Protocol Traceroute Tool
 
-This project implements a multi-protocol traceroute tool in Python, capable of sending ICMP, UDP, or TCP packets to trace the route to one or more remote hosts. The tool measures per-hop latency, builds a topology graph, and provides multiple forms of visualization including static graphs, interactive network diagrams, and IP geolocation maps.
+This project implements a multi-protocol traceroute tool in Python, which sends ICMP, UDP, or TCP packets to trace the route of remote hosts. The tool measures per-hop latency, builds a topology graph, and displays static graphs, interactive network diagrams, and IP geolocation maps.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 - [Features](#features)
-- [Installation](#installation)
 - [Usage](#usage)
 - [Command Line Arguments](#command-line-arguments)
 - [Code Structure](#code-structure)
@@ -16,9 +15,9 @@ This project implements a multi-protocol traceroute tool in Python, capable of s
 
 ---
 
-## 🚀 Features
+## Features
 
-- Supports ICMP, UDP, TCP protocols for flexible traceroute probing
+- Utilizes ICMP, UDP, TCP protocols to create traceroutes
 - Visualizes traceroute output as:
   - Static graphs using Matplotlib
   - Interactive HTML graphs using PyVis
@@ -29,17 +28,8 @@ This project implements a multi-protocol traceroute tool in Python, capable of s
 
 ---
 
-## 🔧 Installation
 
-Ensure Python 3.7+ is installed. Install dependencies via pip:
-
-```bash
-pip install scapy matplotlib networkx pyvis folium requests
-```
-
----
-
-## 🖥️ Usage
+## Usage
 
 Create a text file with one hostname or IP per line:
 
@@ -57,63 +47,63 @@ python trace_4.py targets.txt -uti all -q 3 -M 20
 
 ---
 
-## 🧾 Command Line Arguments
+## Command Line Arguments
 
 | Argument | Description |
 |----------|-------------|
 | `txtfile` | Path to input file containing target hosts (required) |
-| `-n` | Disable DNS resolution of IPs |
-| `-w` | Timeout (seconds) to wait for response (default: 5) |
-| `-m` | Initial TTL value (default: 1) |
-| `-M` | Max TTL to probe (default: 30) |
-| `-p` | Starting UDP destination port (default: 33434) |
-| `-q` | Probes per hop (default: 1) |
+| `-n` | Turn off DNS resolution of IP addresses |
+| `-w` | Timeout (1–300s) to wait for ICMP response (default: 5) |
+| `-m` | Initial TTL (1–255) value (default: 1) |
+| `-M` | Max TTL (1–255) to probe (default: 30) |
+| `-p` | Starting UDP destination port (1–65535) (default: 33434) |
+| `-q` | Probes per hop (1–255) (default: 1) |
 | `-uti` | Protocol to use: `icmp`, `udp`, `tcp`, or `all` (default: all) |
-| `-datasize` | Optional payload size in bytes (default: 0) |
+| `-datasize` | Optional payload size (0–1420) in bytes (default: 0) |
 | `-z`, `--inter_packet_delay` | Delay between packets in seconds (default: 0) |
 
 ---
 
-## 🧠 Code Structure
+## Code Structure
 
 ### `main()`
 - Parses command-line arguments using `argparse`
 - Reads target hostnames from file
-- Calls `multi_protocol_traceroute()` for each target
+- Calls `multi_protocol_traceroute()` for every target hostname
 
 ### `multi_protocol_traceroute(target, args)`
-- Determines which protocol(s) to use (ICMP, UDP, TCP)
+- Iterates through three protocols to use (ICMP, UDP, TCP)
 - Calls `traceroute_probe()`
 - Collects hop results and calls visualization functions
 
 ### `traceroute_probe(...)`
-- Constructs IP packets with incrementing TTL values
-- Uses Scapy to send packets and measure round-trip latency
+- Constructs IP packets with successive TTL values
+- Uses Scapy to send packets and record round-trip latency
 - Tracks responses and builds a NetworkX graph of the route
 
 ### `plot_graph(...)`
-- Builds static graphs using NetworkX and Matplotlib
-- Saves protocol-specific PNG plots and combined latency bar charts
+- Builds graphs using NetworkX and Matplotlib
+- Saves protocol-specific PNG plots and combined latency bar charts to computer
 
 ### `plot_interactive_graph(...)`
-- Builds interactive HTML graphs using PyVis
+- Builds HTML graphs using PyVis
 - Labels nodes and edges with latency information
 - Saves and opens HTML files in browser
 
 ### `geolocate_ip(ip)`
-- Queries ipinfo.io for IP geolocation data
+-  ipinfo.io provides IP geolocation information
 
 ### `plot_geolocation_map(...)`
 - Uses Folium to build a geographic route map
 - Adds markers and lines based on hop locations
-- Saves interactive HTML map to disk
+- Saves and opens HTML files in browser
 
 ### `get_domain_name(ip)`
 - Performs reverse DNS lookup if enabled
 
 ---
 
-## 📊 Visualization Outputs
+## Visualization Outputs
 
 For each target and protocol, the tool produces:
 
@@ -126,19 +116,14 @@ These files visualize the route taken by packets to reach the target, per-protoc
 
 ---
 
-## ⚠️ Limitations
+## Limitations
 
-- Private IPs cannot be geolocated
-- Requires root/admin privileges to send raw packets
+- Private IPs cannot be geolocated and are not visualized on map
 - Geolocation is limited by ipinfo.io rate limits unless an API key is used
 - Some firewalls or ISPs may block traceroute packets
 
 ---
 
-## 💡 Future Enhancements
+## Future Enhancements
 
-- Add progress bars (`tqdm`) and colored terminal output
-- Support traceroute over IPv6
-- Retry logic for inconsistent responses
-- GUI or web frontend using Streamlit
-- Use of personal API keys for higher geolocation resolution
+- GUI
