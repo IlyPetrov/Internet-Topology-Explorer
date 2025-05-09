@@ -32,6 +32,13 @@ def geolocate_ip(ip):
         print(f"Geo error for {ip}: {e}")
     return None, None, "", ""
 
+def log_raw_result(protocol, ttl, ip, domain, latency, target):
+    with open(f"{target}_raw_results.txt", "a") as log_file:
+        if ip:
+            log_file.write(f"{protocol} - TTL {ttl}: {domain} ({ip}) - {latency*1000:.2f} ms\n")
+        else:
+            log_file.write(f"{protocol} - TTL {ttl}: * * * Request timed out\\n")
+
 def traceroute_probe(destination, protocol, max_hops, results, lock, resolve_dns=True, timeout=1,
                      start_ttl=1, dport_base=33434, probes_per_hop=1, datasize=0, inter_packet_delay=0):
     ttl = start_ttl
@@ -39,6 +46,7 @@ def traceroute_probe(destination, protocol, max_hops, results, lock, resolve_dns
     G = nx.Graph()
     edge_latencies = {}
     while ttl <= max_hops:
+        reached = False
         for _ in range(probes_per_hop):
             ip_packet = IP(dst=destination, ttl=ttl)
             payload = Raw(load='X' * max(datasize - 20, 0)) if datasize > 20 else Raw(load='')
@@ -55,13 +63,14 @@ def traceroute_probe(destination, protocol, max_hops, results, lock, resolve_dns
             send_time = time.time()
             reply = sr1(packet, verbose=False, timeout=timeout)
             latency = time.time() - send_time
-
+            
             with lock:
 
                 if reply is not None:
                     src_ip = reply.src
                     domain = src_ip if not resolve_dns else get_domain_name(src_ip)
                     results[protocol][ttl] = {"ip": src_ip, "name": domain, "latency": latency}
+                    log_raw_result(protocol, ttl, src_ip, domain, latency, destination)
                     G.add_node(src_ip, name=domain)
                     if prev_ip:
                         G.add_edge(prev_ip, src_ip, weight=latency)
@@ -69,12 +78,14 @@ def traceroute_probe(destination, protocol, max_hops, results, lock, resolve_dns
                     prev_ip = src_ip
                     print(f"{protocol:<5}- {ttl}. {domain} ({src_ip}) {latency*1000:.2f}ms")
                     if reply.src == socket.gethostbyname(destination) or (hasattr(reply, 'type') and reply.type == 3):
-                        return G, edge_latencies
+                        reached = True
+                        return G, edge_latencies, reached
                 else:
                     results[protocol][ttl] = {"ip": None, "name": None, "latency": None}
+                    log_raw_result(protocol, ttl, None, None, None, destination)
             time.sleep(inter_packet_delay)
         ttl += 1
-    return G, edge_latencies
+    return G, edge_latencies, reached
 
 def multi_protocol_traceroute(target, args):
     protocols = ['UDP', 'TCP', 'ICMP'] if args.uti == 'all' else [args.uti.upper()]
@@ -82,7 +93,7 @@ def multi_protocol_traceroute(target, args):
     lock = threading.Lock()
     for proto in protocols:
         print(f"Tracing {target} using {proto}...")
-        g, latencies = traceroute_probe(
+        g, latencies, reached = traceroute_probe(
             target, proto, args.M, results, lock,
             resolve_dns=not args.n,
             timeout=args.w,
@@ -92,6 +103,8 @@ def multi_protocol_traceroute(target, args):
             datasize=args.datasize,
             inter_packet_delay=args.inter_packet_delay
         )
+        if reached == True:
+            print("Destionation Reached")
         plot_interactive_graph(g, target, proto)
         plot_geolocation_map(results, target, proto)
     plot_graph(target, results)
@@ -152,38 +165,6 @@ def plot_graph(target, results):
     plt.tight_layout()
     plt.savefig(f"{target}_combined_latency.png")
     plt.close()
-# def plot_graph(target, results):
-#     protocols = ['UDP', 'TCP', 'ICMP']
-#     for proto in protocols:
-#         ttl_vals = sorted(results[proto].keys())
-#         latencies = [results[proto][ttl]['latency'] if results[proto][ttl]['latency'] is not None else 0 for ttl in ttl_vals]
-#         ips = [results[proto][ttl]['ip'] if results[proto][ttl]['ip'] else "*" for ttl in ttl_vals]
-
-#         plt.figure(figsize=(10, 6))
-#         plt.bar(ttl_vals, latencies, tick_label=ips)
-#         plt.title(f"{proto} Latency to {target}")
-#         plt.xlabel("Hop (IP)")
-#         plt.ylabel("Latency (s)")
-#         plt.xticks(rotation=90)
-#         plt.tight_layout()
-#         plt.savefig(f"{target}_{proto}_latency.png")
-#         plt.close()
-
-#     # Combined graph
-#     ttl_vals = sorted(set.union(*(set(results[proto].keys()) for proto in protocols)))
-#     width = 0.2
-#     plt.figure(figsize=(12, 6))
-#     for idx, proto in enumerate(protocols):
-#         latencies = [results[proto][ttl]['latency'] if ttl in results[proto] and results[proto][ttl]['latency'] is not None else 0 for ttl in ttl_vals]
-#         plt.bar([x + idx*width for x in range(len(ttl_vals))], latencies, width=width, label=proto)
-
-#     plt.title(f"Combined Latency to {target}")
-#     plt.xlabel("Hop")
-#     plt.ylabel("Latency (s)")
-#     plt.legend()
-#     plt.tight_layout()
-#     plt.savefig(f"{target}_combined_latency.png")
-#     plt.close()
 
 def plot_interactive_graph(G, target, proto):
     net = Network(notebook=False, height="750px", width="100%", bgcolor="#222222", font_color="white")
@@ -199,7 +180,8 @@ def plot_interactive_graph(G, target, proto):
             label=f"{latency*1000:.2f} ms",
             #value=max(latency * 1000, 1)  # use ms, minimum value to keep edge visible
             # value = math.log(latency * 1000 + 1),
-            font = {"size": 20}
+            font = {"size": 15},
+            length=latency * 7500
         )
     filename = f"{target}_{proto}_interactive.html"
     net.save_graph(filename)
@@ -218,13 +200,6 @@ def plot_geolocation_map(results, target, proto):
             if lat and lon:
                 label = f"{ip}\n{city}\n{org}\n{hop['latency']*1000:.2f} ms"
                 locations.append((lat, lon, label))
-            # else:
-            #     # Place private or unlocatable IPs in a staggered horizontal line
-            #     lat = 0  # dummy latitude
-            #     lon = len(locations) * 10  # spread out horizontally
-            #     label = f"{ip} (Private IP or Unknown)\n{hop['latency']*1000:.2f} ms"
-            #     locations.append((lat, lon, label))
-            
     if not locations:
         print("No geolocation data found.")
         return
